@@ -9,7 +9,7 @@ type CFItem struct {
 	prefixLen int
 }
 
-// String returns a string representation of Item
+// String returns a string representation（表示） of Item
 func (i *CFItem) String() string {
 	return i.item.String()
 }

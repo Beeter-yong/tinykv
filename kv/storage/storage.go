@@ -5,7 +5,7 @@ import (
 	"github.com/pingcap-incubator/tinykv/proto/pkg/kvrpcpb"
 )
 
-// Storage represents the internal-facing server part of TinyKV, it handles sending and receiving from other
+// Storage represents the internal-facing(内部的) server part of TinyKV, it handles sending and receiving from other
 // TinyKV nodes. As part of that responsibility, it also reads and writes data to disk (or semi-permanent memory).
 type Storage interface {
 	Start() error

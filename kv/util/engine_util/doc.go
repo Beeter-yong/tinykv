@@ -2,7 +2,7 @@ package engine_util
 
 /*
 An engine is a low-level system for storing key/value pairs locally (without distribution or any transaction support,
-etc.). This package contains code for interacting with such engines.
+etc.). This package contains code for interacting(互动) with such engines.
 
 CF means 'column family'. A good description of column families is given in https://github.com/facebook/rocksdb/wiki/Column-Families
 (specifically for RocksDB, but the general concepts are universal). In short, a column family is a key namespace.
@@ -11,7 +11,7 @@ configured separately. Writes can be made atomic across column families, which c
 
 engine_util includes the following packages:
 
-* engines: a data structure for keeping engines required by unistore.
-* write_batch: code to batch writes into a single, atomic 'transaction'.
-* cf_iterator: code to iterate over a whole column family in badger.
+* engines: a data structure for keeping engines required by unistore. 定义数据结构
+* write_batch: code to batch writes into a single, atomic 'transaction'. 写入数据
+* cf_iterator: code to iterate over a whole column family in badger. 遍历 CF
 */
