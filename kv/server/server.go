@@ -38,22 +38,87 @@ func NewServer(storage storage.Storage) *Server {
 // Raw API.
 func (server *Server) RawGet(_ context.Context, req *kvrpcpb.RawGetRequest) (*kvrpcpb.RawGetResponse, error) {
 	// Your Code Here (1).
-	return nil, nil
+	reader, err := server.storage.Reader(req.Context)
+	if err != nil {
+		return &kvrpcpb.RawGetResponse{}, err
+	}
+	val, err := reader.GetCF(req.Cf, req.Key)
+	if err != nil {
+		return &kvrpcpb.RawGetResponse{}, err
+	}
+	res := &kvrpcpb.RawGetResponse{
+		Value:    val,
+		NotFound: false,
+	}
+	if val == nil {
+		res.NotFound = true
+	}
+	return res, nil
 }
 
 func (server *Server) RawPut(_ context.Context, req *kvrpcpb.RawPutRequest) (*kvrpcpb.RawPutResponse, error) {
 	// Your Code Here (1).
-	return nil, nil
+	put := storage.Put{
+		Key:   req.Key,
+		Value: req.Value,
+		Cf:    req.Cf,
+	}
+	putData := storage.Modify{
+		Data: put,
+	}
+
+	err := server.storage.Write(req.Context, []storage.Modify{putData})
+
+	if err != nil {
+		return &kvrpcpb.RawPutResponse{}, err
+	}
+
+	return &kvrpcpb.RawPutResponse{}, nil
 }
 
 func (server *Server) RawDelete(_ context.Context, req *kvrpcpb.RawDeleteRequest) (*kvrpcpb.RawDeleteResponse, error) {
 	// Your Code Here (1).
-	return nil, nil
+	del := storage.Delete{
+		Key: req.Key,
+		Cf:  req.Cf,
+	}
+	delData := storage.Modify{
+		Data: del,
+	}
+	err := server.storage.Write(req.Context, []storage.Modify{delData})
+	if err != nil {
+		return &kvrpcpb.RawDeleteResponse{}, err
+	}
+
+	return &kvrpcpb.RawDeleteResponse{}, nil
 }
 
 func (server *Server) RawScan(_ context.Context, req *kvrpcpb.RawScanRequest) (*kvrpcpb.RawScanResponse, error) {
 	// Your Code Here (1).
-	return nil, nil
+	reader, err := server.storage.Reader(req.Context)
+	if err != nil {
+		return &kvrpcpb.RawScanResponse{}, err
+	}
+	DBIrer := reader.IterCF(req.Cf)
+	DBIrer.Seek(req.StartKey)
+	var pairs []*kvrpcpb.KvPair
+	limit := req.Limit
+	for ; DBIrer.Valid(); DBIrer.Next() {
+		item := DBIrer.Item()
+		val, _ := item.Value()
+		pairs = append(pairs, &kvrpcpb.KvPair{
+			Key:   item.Key(),
+			Value: val,
+		})
+		limit--
+		if limit == 0 {
+			break
+		}
+	}
+
+	return &kvrpcpb.RawScanResponse{
+		Kvs: pairs,
+	}, nil
 }
 
 // Raft commands (tinykv <-> tinykv)
