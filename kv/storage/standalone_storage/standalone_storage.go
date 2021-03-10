@@ -1,6 +1,8 @@
 package standalone_storage
 
 import (
+	"path"
+
 	"github.com/Connor1996/badger"
 	"github.com/pingcap-incubator/tinykv/kv/config"
 	"github.com/pingcap-incubator/tinykv/kv/storage"
@@ -18,8 +20,8 @@ type StandAloneStorage struct {
 func NewStandAloneStorage(conf *config.Config) *StandAloneStorage {
 	// Your Code Here (1).
 	dbPath := conf.DBPath
-	kvPath := dbPath + "kv"
-	raftPath := dbPath + "raft"
+	kvPath := path.Join(dbPath, "kv")
+	raftPath := path.Join(dbPath, "raft")
 	kvEngine := engine_util.CreateDB(kvPath, false)
 	raftEngine := engine_util.CreateDB(raftPath, true)
 
