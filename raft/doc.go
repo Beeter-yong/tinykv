@@ -15,6 +15,7 @@
 /*
 Package raft sends and receives messages in the Protocol Buffer format
 defined in the eraftpb package.
+Raft 包中依据 eraftpb 中定义的协议缓存来接收和发送消息
 
 Raft is a protocol with which a cluster of nodes can maintain a replicated state machine.
 The state machine is kept in sync through the use of a replicated log.
@@ -25,6 +26,7 @@ Usage
 
 The primary object in raft is a Node. You either start a Node from scratch
 using raft.StartNode or start a Node from some initial state using raft.RestartNode.
+Raft 主要对象就是一个节点。可以从 raft.StartNode 启动一个节点，也可以使用 raft.RestartNode 从初始状态中启动一个节点
 
 To start a node from scratch:
 
@@ -64,10 +66,13 @@ Now that you are holding onto a Node you have a few responsibilities:
 First, you must read from the Node.Ready() channel and process the updates
 it contains. These steps may be performed in parallel, except as noted in step
 2.
+首先，要从 Node.Ready() 通道中处理它所包含的一些内容。
 
 1. Write HardState, Entries, and Snapshot to persistent storage if they are
 not empty. Note that when writing an Entry with Index i, any
 previously-persisted entries with Index >= i must be discarded.
+如果 HardState, Entries, 和 Snapshot 不为空则将其持久化到 storage 中。
+注意，如果写入的 Entry Index=i 则 Index>=i 的 Entry 就已经失效需要清除
 
 2. Send all Messages to the nodes named in the To field. It is important that
 no messages be sent until the latest HardState has been persisted to disk,
@@ -192,17 +197,22 @@ advancing with the given eraftpb.Message. Each step is determined by its
 eraftpb.MessageType. Note that every step is checked by one common method
 'Step' that safety-checks the terms of node and incoming message to prevent
 stale log entries:
+Raft 是以协议缓存区的形式发送和接收消息。每一个 raft 根据自己的角色实现 step 来处理不同的 Message
 
 	'MessageType_MsgHup' is used for election. If a node is a follower or candidate, the
 	'tick' function in 'raft' struct is set as 'tickElection'. If a follower or
 	candidate has not received any heartbeat before the election timeout, it
 	passes 'MessageType_MsgHup' to its Step method and becomes (or remains) a candidate to
 	start a new election.
+	如果 Followers 超过选举时间间隔未收到心跳信息，则发送一个 MessageType_MsgHup 到 step 使得自己成为 candidate 开始一此选举
 
 	'MessageType_MsgBeat' is an internal type that signals the leader to send a heartbeat of
 	the 'MessageType_MsgHeartbeat' type. If a node is a leader, the 'tick' function in
 	the 'raft' struct is set as 'tickHeartbeat', and triggers the leader to
 	send periodic 'MessageType_MsgHeartbeat' messages to its followers.
+	一个内部类型，指示 leader 发送 MessageType_MsgHeartbeat。
+	如果该节点是 Leaser，则会将 raft struct 中的 tick 函数设置为 tickHeartbeat，
+	并触发 Leaser 定期向 Followers 发送 MessageType_MsgHeartbeat
 
 	'MessageType_MsgPropose' proposes to append data to its log entries. This is a special
 	type to redirect proposals to the leader. Therefore, send method overwrites
@@ -214,6 +224,7 @@ stale log entries:
 	follower, 'MessageType_MsgPropose' is stored in follower's mailbox(msgs) by the send
 	method. It is stored with sender's ID and later forwarded to the leader by
 	rafthttp package.
+	用于在 log entries 中追加数据
 
 	'MessageType_MsgAppend' contains log entries to replicate. A leader calls bcastAppend,
 	which calls sendAppend, which sends soon-to-be-replicated logs in 'MessageType_MsgAppend'
@@ -221,11 +232,13 @@ stale log entries:
 	back to follower, because it indicates that there is a valid leader sending
 	'MessageType_MsgAppend' messages. Candidate and follower respond to this message in
 	'MessageType_MsgAppendResponse' type.
+	用于 Leader 发送 Log entries 给 candidate/follower
 
 	'MessageType_MsgAppendResponse' is response to log replication request('MessageType_MsgAppend'). When
 	'MessageType_MsgAppend' is passed to candidate or follower's Step method, it responds by
 	calling 'handleAppendEntries' method, which sends 'MessageType_MsgAppendResponse' to raft
 	mailbox.
+	当 candidate/follower 接收了 Leader 的 Log entries 就响应该消息
 
 	'MessageType_MsgRequestVote' requests votes for election. When a node is a follower or
 	candidate and 'MessageType_MsgHup' is passed to its Step method, then the node calls
@@ -239,18 +252,22 @@ stale log entries:
 	sender only when sender's last term is greater than MessageType_MsgRequestVote's term or
 	sender's last term is equal to MessageType_MsgRequestVote's term but sender's last committed
 	index is greater than or equal to follower's.
+	在选举中用于请求投票。
 
 	'MessageType_MsgRequestVoteResponse' contains responses from voting request. When 'MessageType_MsgRequestVoteResponse' is
 	passed to candidate, the candidate calculates how many votes it has won. If
 	it's more than majority (quorum), it becomes leader and calls 'bcastAppend'.
 	If candidate receives majority of votes of denials, it reverts back to
 	follower.
+	在选举中其他节点对 candidate 的投票回应信息
 
 	'MessageType_MsgSnapshot' requests to install a snapshot message. When a node has just
 	become a leader or the leader receives 'MessageType_MsgPropose' message, it calls
 	'bcastAppend' method, which then calls 'sendAppend' method to each
 	follower. In 'sendAppend', if a leader fails to get term or entries,
 	the leader requests snapshot by sending 'MessageType_MsgSnapshot' type message.
+	当一个 node 刚成为 Leader 或者 Leader 接收到 MessageType_MsgPropose 信息，这个 Leader 就会向所有的 Follower 广播追加 log。
+	如果 Leader 没有得到 term 就会请求 MessageType_MsgSnapshot 获取快照信息
 
 	'MessageType_MsgHeartbeat' sends heartbeat from leader. When 'MessageType_MsgHeartbeat' is passed
 	to candidate and message's term is higher than candidate's, the candidate
@@ -259,10 +276,12 @@ stale log entries:
 	'MessageType_MsgHeartbeat' is passed to follower's Step method and message's term is
 	higher than follower's, the follower updates its leaderID with the ID
 	from the message.
+	Leader 发送心跳信息
 
 	'MessageType_MsgHeartbeatResponse' is a response to 'MessageType_MsgHeartbeat'. When 'MessageType_MsgHeartbeatResponse'
 	is passed to the leader's Step method, the leader knows which follower
 	responded.
+	followers 响应 Leader 的心跳信息
 
 */
 package raft

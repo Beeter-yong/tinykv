@@ -67,6 +67,7 @@ type Ready struct {
 }
 
 // RawNode is a wrapper of Raft.
+// 是对 Raft 的一个包装
 type RawNode struct {
 	Raft *Raft
 	// Your Data Here (2A).
@@ -84,6 +85,7 @@ func (rn *RawNode) Tick() {
 }
 
 // Campaign causes this RawNode to transition to candidate state.
+// 过渡到 candidate 状态
 func (rn *RawNode) Campaign() error {
 	return rn.Raft.Step(pb.Message{
 		MsgType: pb.MessageType_MsgHup,
@@ -100,6 +102,7 @@ func (rn *RawNode) Propose(data []byte) error {
 }
 
 // ProposeConfChange proposes a config change.
+// 将数据追加到 Raft 日志中
 func (rn *RawNode) ProposeConfChange(cc pb.ConfChange) error {
 	data, err := cc.Marshal()
 	if err != nil {
@@ -113,6 +116,7 @@ func (rn *RawNode) ProposeConfChange(cc pb.ConfChange) error {
 }
 
 // ApplyConfChange applies a config change to the local node.
+// 将配置更改应用的这个节点中
 func (rn *RawNode) ApplyConfChange(cc pb.ConfChange) *pb.ConfState {
 	if cc.NodeId == None {
 		return &pb.ConfState{Nodes: nodes(rn.Raft)}
@@ -141,12 +145,14 @@ func (rn *RawNode) Step(m pb.Message) error {
 }
 
 // Ready returns the current point-in-time state of this RawNode.
+// 返回当前时间点状态
 func (rn *RawNode) Ready() Ready {
 	// Your Code Here (2A).
 	return Ready{}
 }
 
 // HasReady called when RawNode user need to check if any Ready pending.
+// 判断 RawNode 是否由 Ready 需要处理
 func (rn *RawNode) HasReady() bool {
 	// Your Code Here (2A).
 	return false
@@ -160,6 +166,7 @@ func (rn *RawNode) Advance(rd Ready) {
 
 // GetProgress return the the Progress of this node and its peers, if this
 // node is leader.
+// Leader 调用，返回所有节点的进度
 func (rn *RawNode) GetProgress() map[uint64]Progress {
 	prs := make(map[uint64]Progress)
 	if rn.Raft.State == StateLeader {
@@ -171,6 +178,7 @@ func (rn *RawNode) GetProgress() map[uint64]Progress {
 }
 
 // TransferLeader tries to transfer leadership to the given transferee.
+// 转移 Leader 状态 
 func (rn *RawNode) TransferLeader(transferee uint64) {
 	_ = rn.Raft.Step(pb.Message{MsgType: pb.MessageType_MsgTransferLeader, From: transferee})
 }

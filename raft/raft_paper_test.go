@@ -316,7 +316,7 @@ func TestCandidatesElectionTimeoutNonconflict2AA(t *testing.T) {
 func testNonleadersElectionTimeoutNonconflict(t *testing.T, state StateType) {
 	et := 10
 	size := 5
-	rs := make([]*Raft, size)
+ 	rs := make([]*Raft, size)
 	ids := idsBySize(size)
 	for k := range rs {
 		rs[k] = newTestRaft(ids[k], ids, et, 1, NewMemoryStorage())
