@@ -333,7 +333,7 @@ func (r *Raft) Step(m pb.Message) error {
 		case pb.MessageType_MsgAppend:
 			r.becomeFollower(r.Term, m.From)
 		case pb.MessageType_MsgRequestVoteResponse:
-			r.votes[m.From] = !m.Reject // reject 是什么意思？
+			r.votes[m.From] = !m.Reject
 			agree, reject := 0, 0
 			for _, v := range r.votes {
 				if v {
@@ -365,7 +365,7 @@ func (r *Raft) Step(m pb.Message) error {
 		case pb.MessageType_MsgPropose:
 			for p := range r.Prs {
 				if p != r.id {
-					r.sendAppend(p)
+					r.sen dAppend(p)
 				}
 			}
 		}

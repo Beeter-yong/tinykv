@@ -59,7 +59,7 @@ type Storage interface {
 	// LastIndex returns the index of the last entry in the log.
 	LastIndex() (uint64, error)
 	// FirstIndex returns the index of the first log entry that is
-	// possibly available via Entries (older entries have been incorporated
+	// possibly available via Entries (older entries have been incorporated(合并)
 	// into the latest Snapshot; if storage only contains the dummy entry the
 	// first log entry is not available).
 	FirstIndex() (uint64, error)
@@ -212,9 +212,9 @@ func (ms *MemoryStorage) CreateSnapshot(i uint64, cs *pb.ConfState, data []byte)
 	return ms.snapshot, nil
 }
 
-// Compact discards all log entries prior to compactIndex.
+// Compact discards all log entries prior to compactIndex.	丢弃 compactIndex 之前的所有日志条目
 // It is the application's responsibility to not attempt to compact an index
-// greater than raftLog.applied.
+// greater than raftLog.applied.	对于 raftLog.applied ？？？不再压缩
 func (ms *MemoryStorage) Compact(compactIndex uint64) error {
 	ms.Lock()
 	defer ms.Unlock()

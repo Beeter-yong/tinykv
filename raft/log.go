@@ -22,27 +22,30 @@ import pb "github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
 //  --------|------------------------------------------------|
 //                            log entries
 //
-// for simplify the RaftLog implement should manage all log entries
-// that not truncated
+// f
 type RaftLog struct {
 	// storage contains all stable entries since the last snapshot.
 	storage Storage
 
 	// committed is the highest log position that is known to be in
 	// stable storage on a quorum of nodes.
+	// 已经存储到稳定 storage 中日志的最大位置
 	committed uint64
 
 	// applied is the highest log position that the application has
 	// been instructed to apply to its state machine.
 	// Invariant: applied <= committed
+	// 已经在状态机中成功执行的日志最大位置
 	applied uint64
 
 	// log entries with index <= stabled are persisted to storage.
 	// It is used to record the logs that are not persisted by storage yet.
+	// 用于记录还没有持久化存储的日志位置
 	// Everytime handling `Ready`, the unstabled logs will be included.
 	stabled uint64
 
 	// all entries that have not yet compact.
+	// 存储还没有被压缩的日志
 	entries []pb.Entry
 
 	// the incoming unstable snapshot, if any.
@@ -70,12 +73,14 @@ func (l *RaftLog) maybeCompact() {
 }
 
 // unstableEntries return all the unstable entries
+// 返回还没有提交的日志
 func (l *RaftLog) unstableEntries() []pb.Entry {
 	// Your Code Here (2A).
 	return nil
 }
 
 // nextEnts returns all the committed but not applied entries
+// 返回所有提交但还没有应用到状态机中的日志
 func (l *RaftLog) nextEnts() (ents []pb.Entry) {
 	// Your Code Here (2A).
 	return nil
