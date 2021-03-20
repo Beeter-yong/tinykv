@@ -365,7 +365,7 @@ func (r *Raft) Step(m pb.Message) error {
 		case pb.MessageType_MsgPropose:
 			for p := range r.Prs {
 				if p != r.id {
-					r.sen dAppend(p)
+					r.sendAppend(p)
 				}
 			}
 		}
