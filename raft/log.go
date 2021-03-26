@@ -53,15 +53,26 @@ type RaftLog struct {
 	pendingSnapshot *pb.Snapshot
 
 	// Your Data Here (2A).
+	FirstIndex uint64
 }
 
 // newLog returns log using the given storage. It recovers the log
 // to the state that it just commits and applies the latest snapshot.
 func newLog(storage Storage) *RaftLog {
 	// Your Code Here (2A).
+	lo, _ := storage.FirstIndex()
+	hi, _ := storage.LastIndex()
+	entries, err := storage.Entries(lo, hi+1)
+	if err != nil {
+		panic(err)
+	}
 	return &RaftLog{
 		storage: storage,
-		entries: make([]pb.Entry, 0),
+		entries: entries,
+		applied: lo - 1,
+
+		stabled: hi,
+		FirstIndex: lo,
 	}
 }
 
@@ -76,6 +87,9 @@ func (l *RaftLog) maybeCompact() {
 // 返回还没有提交的日志
 func (l *RaftLog) unstableEntries() []pb.Entry {
 	// Your Code Here (2A).
+	if len(l.entries) > 0 {
+		return l.entries[l.stabled - l.FirstIndex+1 :]
+	}
 	return nil
 }
 
@@ -83,14 +97,24 @@ func (l *RaftLog) unstableEntries() []pb.Entry {
 // 返回所有提交但还没有应用到状态机中的日志
 func (l *RaftLog) nextEnts() (ents []pb.Entry) {
 	// Your Code Here (2A).
+	if len(l.entries) > 0 {
+		return l.entries[l.applied-l.FirstIndex+1 : l.committed-l.FirstIndex+1]
+	}
 	return nil
 }
 
 // LastIndex return the last index of the log entries
 func (l *RaftLog) LastIndex() uint64 {
 	// Your Code Here (2A).
-	li, _ := l.storage.LastIndex()
-	return li
+	var index uint64
+	if !IsEmptySnap(l.pendingSnapshot) {
+		index = l.pendingSnapshot.Metadata.Index
+	}
+	if len(l.entries) > 0 {
+		return max(l.entries[len(l.entries)-1].Index, index)
+	}
+	i, _ := l.storage.LastIndex()
+	return max(i, index)
 }
 
 func (l *RaftLog) LastTerm() uint64 {
@@ -101,5 +125,32 @@ func (l *RaftLog) LastTerm() uint64 {
 // Term return the term of the entry in the given index
 func (l *RaftLog) Term(i uint64) (uint64, error) {
 	// Your Code Here (2A).
-	return l.storage.Term(i)
+	if len(l.entries) > 0 && i >= l.FirstIndex {
+		return l.entries[i - l.FirstIndex].Term, nil
+	}
+
+	term, err := l.storage.Term(i)
+	if err == ErrUnavailable && !IsEmptySnap(l.pendingSnapshot) {
+		if i == l.pendingSnapshot.Metadata.Index {
+			// 刚好查看的是快照最后一个日志的 Term
+			term = l.pendingSnapshot.Metadata.Term
+			err = nil
+		} else if i < l.pendingSnapshot.Metadata.Index {
+			// 请求查看的索引已经压缩、
+			err = ErrCompacted
+		}
+	}
+	return term, err
+}
+
+func (l *RaftLog) toSliceIndex(i uint64) int {
+	idx := int(i - l.FirstIndex)
+	if idx < 0 {
+		panic("toSliceIndex: index<0")
+	}
+	return idx
+}
+
+func (l *RaftLog) toEntryIndex(i int) uint64 {
+	return uint64(i) + l.FirstIndex
 }
