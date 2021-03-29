@@ -50,15 +50,23 @@ type RaftLog struct {
 	pendingSnapshot *pb.Snapshot
 
 	// Your Data Here (2A).
+	FirstIndex uint64 // 记录 entries 中第一个日志的索引
 }
 
 // newLog returns log using the given storage. It recovers the log
 // to the state that it just commits and applies the latest snapshot.
 func newLog(storage Storage) *RaftLog {
 	// Your Code Here (2A).
-	log := &RaftLog {
-		storage: storage,
-		entries: make([]pb.Entry, 0),
+	// 从 Storage 中初始化一个 Raft 得日志
+	lo, _ := storage.FirstIndex()
+	hi, _ := storage.LastIndex()
+	entries, _ := storage.Entries(lo, hi+1)
+
+	log := &RaftLog{
+		storage:    storage,
+		entries:    entries,
+		FirstIndex: lo,
+		stabled: hi,
 	}
 	return log
 }
@@ -73,18 +81,25 @@ func (l *RaftLog) maybeCompact() {
 // unstableEntries return all the unstable entries
 func (l *RaftLog) unstableEntries() []pb.Entry {
 	// Your Code Here (2A).
-	return nil
+
+	entrys := l.entries[l.stabled-l.FirstIndex+1:]
+	return entrys
 }
 
 // nextEnts returns all the committed but not applied entries
 func (l *RaftLog) nextEnts() (ents []pb.Entry) {
 	// Your Code Here (2A).
-	return nil
+	entrys := l.entries[l.applied-l.FirstIndex+1 : l.committed-l.FirstIndex+1]
+	return entrys
 }
 
 // LastIndex return the last index of the log entries
 func (l *RaftLog) LastIndex() uint64 {
 	// Your Code Here (2A).
+	
+	if len(l.entries) > 0 {
+		return l.entries[len(l.entries)-1].Index
+	}
 	li, _ := l.storage.LastIndex()
 	return li
 }
@@ -97,5 +112,8 @@ func (l *RaftLog) LastTerm() uint64 {
 // Term return the term of the entry in the given index
 func (l *RaftLog) Term(i uint64) (uint64, error) {
 	// Your Code Here (2A).
+	if len(l.entries) > 0 && i >= l.FirstIndex {
+		return l.entries[i - l.FirstIndex].Term, nil
+	}
 	return l.storage.Term(i)
 }

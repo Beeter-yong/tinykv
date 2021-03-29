@@ -502,6 +502,7 @@ func TestLeaderCommitPrecedingEntries2AB(t *testing.T) {
 
 		li := uint64(len(tt))
 		wents := append(tt, pb.Entry{Term: 3, Index: li + 1}, pb.Entry{Term: 3, Index: li + 2, Data: []byte("some data")})
+		print(r.RaftLog.nextEnts())
 		if g := r.RaftLog.nextEnts(); !reflect.DeepEqual(g, wents) {
 			t.Errorf("#%d: ents = %+v, want %+v", i, g, wents)
 		}
@@ -687,26 +688,26 @@ func TestLeaderSyncFollowerLog2AB(t *testing.T) {
 	}
 	term := uint64(8)
 	tests := [][]pb.Entry{
-		{
+		{//0
 			{},
 			{Term: 1, Index: 1}, {Term: 1, Index: 2}, {Term: 1, Index: 3},
 			{Term: 4, Index: 4}, {Term: 4, Index: 5},
 			{Term: 5, Index: 6}, {Term: 5, Index: 7},
 			{Term: 6, Index: 8}, {Term: 6, Index: 9},
 		},
-		{
+		{//1
 			{},
 			{Term: 1, Index: 1}, {Term: 1, Index: 2}, {Term: 1, Index: 3},
 			{Term: 4, Index: 4},
 		},
-		{
+		{//2
 			{},
 			{Term: 1, Index: 1}, {Term: 1, Index: 2}, {Term: 1, Index: 3},
 			{Term: 4, Index: 4}, {Term: 4, Index: 5},
 			{Term: 5, Index: 6}, {Term: 5, Index: 7},
 			{Term: 6, Index: 8}, {Term: 6, Index: 9}, {Term: 6, Index: 10}, {Term: 6, Index: 11},
 		},
-		{
+		{//3
 			{},
 			{Term: 1, Index: 1}, {Term: 1, Index: 2}, {Term: 1, Index: 3},
 			{Term: 4, Index: 4}, {Term: 4, Index: 5},
@@ -714,7 +715,7 @@ func TestLeaderSyncFollowerLog2AB(t *testing.T) {
 			{Term: 6, Index: 8}, {Term: 6, Index: 9}, {Term: 6, Index: 10},
 			{Term: 7, Index: 11}, {Term: 7, Index: 12},
 		},
-		{
+		{//4
 			{},
 			{Term: 1, Index: 1}, {Term: 1, Index: 2}, {Term: 1, Index: 3},
 			{Term: 4, Index: 4}, {Term: 4, Index: 5}, {Term: 4, Index: 6}, {Term: 4, Index: 7},
@@ -727,6 +728,8 @@ func TestLeaderSyncFollowerLog2AB(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
+		print("--------------")
+		print(i)
 		leadStorage := NewMemoryStorage()
 		leadStorage.Append(ents)
 		lead := newTestRaft(1, []uint64{1, 2, 3}, 10, 1, leadStorage)
