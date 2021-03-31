@@ -33,7 +33,7 @@ type SoftState struct {
 	RaftState StateType
 }
 
-// Ready encapsulates the entries and messages that are ready to read,
+// Ready encapsulates(封装) the entries and messages that are ready to read,
 // be saved to stable storage, committed or sent to other peers.
 // All fields in Ready are read-only.
 type Ready struct {
@@ -47,7 +47,7 @@ type Ready struct {
 	// HardState will be equal to empty state if there is no update.
 	pb.HardState
 
-	// Entries specifies entries to be saved to stable storage BEFORE
+	// Entries specifies(指定) entries to be saved to stable storage BEFORE
 	// Messages are sent.
 	Entries []pb.Entry
 
@@ -55,7 +55,7 @@ type Ready struct {
 	Snapshot pb.Snapshot
 
 	// CommittedEntries specifies entries to be committed to a
-	// store/state-machine. These have previously been committed to stable
+	// store/state-machine. These have previously(之前) been committed to stable
 	// store.
 	CommittedEntries []pb.Entry
 
@@ -67,16 +67,26 @@ type Ready struct {
 }
 
 // RawNode is a wrapper of Raft.
-// 是对 Raft 的一个包装
 type RawNode struct {
 	Raft *Raft
 	// Your Data Here (2A).
+	PreHardState pb.HardState
 }
 
 // NewRawNode returns a new RawNode given configuration and a list of raft peers.
 func NewRawNode(config *Config) (*RawNode, error) {
 	// Your Code Here (2A).
-	return nil, nil
+	r := newRaft(config)
+	hardState := pb.HardState{
+		Term: r.Term,
+		Vote: r.Vote,
+		Commit: r.RaftLog.committed,
+	}
+	rawNode := &RawNode{
+		Raft: r,
+		PreHardState: hardState,
+	}
+	return rawNode, nil
 }
 
 // Tick advances the internal logical clock by a single tick.
@@ -85,7 +95,6 @@ func (rn *RawNode) Tick() {
 }
 
 // Campaign causes this RawNode to transition to candidate state.
-// 过渡到 candidate 状态
 func (rn *RawNode) Campaign() error {
 	return rn.Raft.Step(pb.Message{
 		MsgType: pb.MessageType_MsgHup,
@@ -102,7 +111,6 @@ func (rn *RawNode) Propose(data []byte) error {
 }
 
 // ProposeConfChange proposes a config change.
-// 将数据追加到 Raft 日志中
 func (rn *RawNode) ProposeConfChange(cc pb.ConfChange) error {
 	data, err := cc.Marshal()
 	if err != nil {
@@ -116,7 +124,6 @@ func (rn *RawNode) ProposeConfChange(cc pb.ConfChange) error {
 }
 
 // ApplyConfChange applies a config change to the local node.
-// 将配置更改应用的这个节点中
 func (rn *RawNode) ApplyConfChange(cc pb.ConfChange) *pb.ConfState {
 	if cc.NodeId == None {
 		return &pb.ConfState{Nodes: nodes(rn.Raft)}
@@ -144,29 +151,63 @@ func (rn *RawNode) Step(m pb.Message) error {
 	return ErrStepPeerNotFound
 }
 
-// Ready returns the current point-in-time state of this RawNode.
-// 返回当前时间点状态
+// Ready returns the current point-in-time state of this RawNode.	返回当前时间点 Node 状态
 func (rn *RawNode) Ready() Ready {
 	// Your Code Here (2A).
-	return Ready{}
+	// softState := &SoftState{
+	// 	Lead: rn.Raft.Lead,
+	// 	RaftState: rn.Raft.State,
+	// }
+	hardState := pb.HardState{
+		Term: rn.Raft.Term,
+		Vote: rn.Raft.Vote,
+		Commit: rn.Raft.RaftLog.committed,
+	}
+	ready := Ready{
+		// SoftState: softState,
+		Entries: rn.Raft.RaftLog.unstableEntries(),
+		CommittedEntries: rn.Raft.RaftLog.nextEnts(),
+		Messages: rn.Raft.msgs,
+	}
+	if !isHardStateEqual(hardState, rn.PreHardState) {
+		ready.HardState = hardState
+	}
+	// raft 信息都已经交代给 RawNode 处理，所以 raft 应该清除
+	rn.Raft.msgs = make([]pb.Message, 0)
+	return ready
 }
 
-// HasReady called when RawNode user need to check if any Ready pending.
-// 判断 RawNode 是否由 Ready 需要处理
+// HasReady called when RawNode user need to check if any Ready pending.  上层应用检查是否有待处理的 Ready
 func (rn *RawNode) HasReady() bool {
 	// Your Code Here (2A).
+	r := rn.Raft
+	if hardSt := r.hardState(); !IsEmptyHardState(hardSt) && !isHardStateEqual(hardSt, rn.PreHardState) {
+		return true
+	}
+	if len(r.msgs) > 0 || len(r.RaftLog.unstableEntries()) >0 || len(r.RaftLog.nextEnts()) > 0{
+		return true
+	}
 	return false
 }
 
 // Advance notifies the RawNode that the application has applied and saved progress in the
-// last Ready results.
+// last Ready results.  对 Ready 进行进度更新
 func (rn *RawNode) Advance(rd Ready) {
 	// Your Code Here (2A).
+	// 将 Ready 信息持久化，所以会更新 RawNode
+	if !IsEmptyHardState(rd.HardState) {
+		rn.PreHardState = rd.HardState
+	}
+	if len(rd.Entries) > 0 {
+		rn.Raft.RaftLog.stabled = rd.Entries[len(rd.Entries)-1].Index
+	}
+	if len(rd.CommittedEntries) > 0 {
+		rn.Raft.RaftLog.applied = rd.CommittedEntries[len(rd.CommittedEntries)-1].Index
+	}
 }
 
 // GetProgress return the the Progress of this node and its peers, if this
-// node is leader.
-// Leader 调用，返回所有节点的进度
+// node is leader.	应用 Ready
 func (rn *RawNode) GetProgress() map[uint64]Progress {
 	prs := make(map[uint64]Progress)
 	if rn.Raft.State == StateLeader {
@@ -178,7 +219,6 @@ func (rn *RawNode) GetProgress() map[uint64]Progress {
 }
 
 // TransferLeader tries to transfer leadership to the given transferee.
-// 转移 Leader 状态 
 func (rn *RawNode) TransferLeader(transferee uint64) {
 	_ = rn.Raft.Step(pb.Message{MsgType: pb.MessageType_MsgTransferLeader, From: transferee})
 }

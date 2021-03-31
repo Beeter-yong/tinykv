@@ -208,6 +208,15 @@ func newRaft(c *Config) *Raft {
 	return r
 }
 
+func (r *Raft) hardState() pb.HardState {
+	hardState := pb.HardState{
+		Term: r.Term,
+		Vote: r.Vote,
+		Commit: r.RaftLog.committed,
+	}
+	return hardState
+}
+
 func (r *Raft) sendAppendResponse(to uint64, reject bool, term, index uint64) {
 	msg := pb.Message{
 		MsgType: pb.MessageType_MsgAppendResponse,
