@@ -174,7 +174,7 @@ func newRaft(c *Config) *Raft {
 		Prs:                   make(map[uint64]*Progress),
 		State:                 StateFollower,
 		votes:                 make(map[uint64]bool),
-		msgs:                  make([]pb.Message, 0),
+		// msgs:                  make([]pb.Message, 0),
 		Lead:                  None,
 		heartbeatTimeout:      c.HeartbeatTick,
 		electionTimeout:       c.ElectionTick,
@@ -195,6 +195,15 @@ func newRaft(c *Config) *Raft {
 	}
 
 	return raft
+}
+
+func (r *Raft) getHardState() pb.HardState {
+	hardState := pb.HardState{
+		Term: r.Term,
+		Vote: r.Vote,
+		Commit: r.RaftLog.committed,
+	}
+	return hardState
 }
 
 // sendAppend sends an append RPC with new entries (if any) and the
@@ -326,9 +335,6 @@ func (r *Raft) becomeCandidate() {
 	r.votes[r.id] = true
 	r.electionElapsed = 0
 	r.randomElectionTimeout = r.electionTimeout + rand.Intn(r.electionTimeout)
-	if len(r.Prs) == 1 {
-		r.becomeLeader()
-	}
 }
 
 // becomeLeader transform this peer's state to leader
@@ -353,6 +359,9 @@ func (r *Raft) becomeLeader() {
 		Index: lastIndex + 1,
 	})
 	r.bcastAppend()
+	if len(r.Prs) == 1 {
+		r.RaftLog.committed = r.Prs[r.id].Match
+	}
 }
 
 // Step the entrance of handle message, see `MessageType`
@@ -424,6 +433,10 @@ func (r *Raft) doElection() {
 		if peer != r.id {
 			r.sendRequestVote(peer)
 		}
+	}
+	if len(r.Prs) == 1 {
+		r.becomeLeader()
+		return
 	}
 
 }
