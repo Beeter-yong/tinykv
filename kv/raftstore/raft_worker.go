@@ -6,7 +6,7 @@ import (
 	"github.com/pingcap-incubator/tinykv/kv/raftstore/message"
 )
 
-// raftWorker is responsible for run raft commands and apply raft logs.
+// raftWorker is responsible for run raft commands and apply raft logs.	运行 raft 命令并应用到 raft 的日志中
 type raftWorker struct {
 	pr *router
 
@@ -27,8 +27,8 @@ func newRaftWorker(ctx *GlobalContext, pm *router) *raftWorker {
 	}
 }
 
-// run runs raft commands.
-// On each loop, raft commands are batched by channel buffer.
+// run runs raft commands. 
+// On each loop, raft commands are batched by channel buffer. 	每次循环中，raft 命令将通过 channel 缓冲区将批量执行
 // After commands are handled, we collect apply messages by peers, make a applyBatch, send it to apply channel.
 func (rw *raftWorker) run(closeCh <-chan struct{}, wg *sync.WaitGroup) {
 	defer wg.Done()
