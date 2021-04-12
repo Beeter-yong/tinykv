@@ -82,6 +82,7 @@ type peer struct {
 	Tag string
 
 	// Record the callback of the proposals
+	// 记录 提案 的回调
 	// (Used in 2B)
 	proposals []*proposal
 

@@ -362,11 +362,11 @@ func (ps *PeerStorage) SaveReadyState(ready *raft.Ready) (*ApplySnapResult, erro
 	var result *ApplySnapResult
 	var err error
 
-	if !raft.IsEmptySnap(&ready.Snapshot) {
-		kvWB := new(engine_util.WriteBatch)
-		result, err = ps.ApplySnapshot(&ready.Snapshot, kvWB, raftWB)
-		kvWB.WriteToDB(ps.Engines.Kv)
-	}
+	// if !raft.IsEmptySnap(&ready.Snapshot) {
+	// 	kvWB := new(engine_util.WriteBatch)
+	// 	result, err = ps.ApplySnapshot(&ready.Snapshot, kvWB, raftWB)
+	// 	kvWB.WriteToDB(ps.Engines.Kv)
+	// }
 	ps.Append(ready.Entries, raftWB)
 	if !raft.IsEmptyHardState(ready.HardState) {
 		ps.raftState.HardState = &ready.HardState

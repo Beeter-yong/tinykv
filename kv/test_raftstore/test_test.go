@@ -144,16 +144,16 @@ func confchanger(t *testing.T, cluster *Cluster, ch chan bool, done *int32) {
 	}
 }
 
-// Basic test is as follows: one or more clients submitting Put/Scan
+// Basic test is as follows: one or more clients submitting Put/Scan	模拟一个或多个客户端对 集群 的 put/scan 操作
 // operations to set of servers for some period of time.  After the period is
 // over, test checks that all sequential values are present and in order for a
 // particular key and perform Delete to clean up.
-// - If unreliable is set, RPCs may fail.
-// - If crash is set, the servers restart after the period is over.
-// - If partitions is set, the test repartitions the network concurrently between the servers.
-// - If maxraftlog is a positive number, the count of the persistent log for Raft shouldn't exceed 2*maxraftlog.
+// - If unreliable is set, RPCs may fail.	模拟 Rpc 失效
+// - If crash is set, the servers restart after the period is over.		模拟服务器崩溃后重启
+// - If partitions is set, the test repartitions the network concurrently between the servers.	模拟网络分区的情况
+// - If maxraftlog is a positive number, the count of the persistent log for Raft shouldn't exceed 2*maxraftlog.	raft 日志上限设置
 // - If confchangee is set, the cluster will schedule random conf change concurrently.
-// - If split is set, split region when size exceed 1024 bytes.
+// - If split is set, split region when size exceed 1024 bytes.		当 region 大小超过一定上限后分割处理
 func GenericTest(t *testing.T, part string, nclients int, unreliable bool, crash bool, partitions bool, maxraftlog int, confchange bool, split bool) {
 	title := "Test: "
 	if unreliable {

@@ -74,10 +74,10 @@ func (d *peerMsgHandler) processRequest(entry * eraftpb.Entry, msg *raft_cmdpb.R
 	if key != nil {
 		err := util.CheckKeyInRegion(key, d.Region())
 		if err != nil {
-			d.handleProposal(entry, func(p *proposal) {
-				p.cb.Done(ErrResp(err))
-			})
-			return wb
+			// d.handleProposal(entry, func(p *proposal) {
+			// 	p.cb.Done(ErrResp(err))
+			// })
+			// return wb
 		}
 	}
 	// apply to key
@@ -109,8 +109,24 @@ func (d *peerMsgHandler) processRequest(entry * eraftpb.Entry, msg *raft_cmdpb.R
 					Put: &raft_cmdpb.PutResponse{},
 				},
 			}
+		case raft_cmdpb.CmdType_Delete:
+			resp.Responses = []*raft_cmdpb.Response{
+				{
+					CmdType: raft_cmdpb.CmdType_Delete,
+					Delete: &raft_cmdpb.DeleteResponse{},
+				},
+			}
 		case raft_cmdpb.CmdType_Snap:
-			print("handler Snap")
+			if msg.Header.RegionEpoch.Version != d.Region().RegionEpoch.Version {
+				p.cb.Done(ErrResp(&util.ErrEpochNotMatch{}))
+				return
+			}
+			d.peerStorage.applyState.AppliedIndex = entry.Index
+			wb.SetMeta(meta.ApplyStateKey(d.regionId), d.peerStorage.applyState)
+			wb.WriteToDB(d.peerStorage.Engines.Kv)
+			resp.Responses = []*raft_cmdpb.Response{{CmdType: raft_cmdpb.CmdType_Snap, Snap: &raft_cmdpb.SnapResponse{Region: d.Region()}}}
+			p.cb.Txn = d.peerStorage.Engines.Kv.NewTransaction(false)
+			wb = new(engine_util.WriteBatch)
 		}
 		p.cb.Done(resp)
 	})
@@ -154,7 +170,7 @@ func (d *peerMsgHandler) HandleRaftReady() {
 		}
 		d.Send(d.ctx.trans, ready.Messages)
 		if len(ready.CommittedEntries) > 0 {
-			oldProposals := d.proposals
+			// oldProposals := d.proposals
 			kvWB := new(engine_util.WriteBatch)
 			for _, entry := range ready.CommittedEntries {
 				kvWB = d.process(&entry, kvWB)
@@ -165,11 +181,11 @@ func (d *peerMsgHandler) HandleRaftReady() {
 			d.peerStorage.applyState.AppliedIndex = ready.CommittedEntries[len(ready.CommittedEntries)-1].Index
 			kvWB.SetMeta(meta.ApplyStateKey(d.regionId), d.peerStorage.applyState)
 			kvWB.WriteToDB(d.peerStorage.Engines.Kv)
-			if len(oldProposals) > len(d.proposals) {
-				proposals := make([]*proposal, len(d.proposals))
-				copy(proposals, d.proposals)
-				d.proposals = proposals
-			}
+			// if len(oldProposals) > len(d.proposals) {
+			// 	proposals := make([]*proposal, len(d.proposals))
+			// 	copy(proposals, d.proposals)
+			// 	d.proposals = proposals
+			// }
 		}
 		d.RaftGroup.Advance(ready)
 	}
@@ -248,7 +264,6 @@ func (d *peerMsgHandler) proposeAdminRequest(msg *raft_cmdpb.RaftCmdRequest, cb 
 		print("333333333333")
 	case raft_cmdpb.AdminCmdType_Split:
 		print("4444444444444444")
-		
 	}
 }
 
