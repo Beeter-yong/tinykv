@@ -19,6 +19,7 @@ import (
 	"math/rand"
 	"sort"
 
+	"github.com/pingcap-incubator/tinykv/log"
 	pb "github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
 )
 
@@ -181,16 +182,28 @@ func newRaft(c *Config) *Raft {
 		randomElectionTimeout: c.ElectionTick + rand.Intn(c.ElectionTick),
 	}
 
-	hardState, _, _ := c.Storage.InitialState()
+	hardState, confState, _ := c.Storage.InitialState()
 	raft.Term = hardState.Term
 	raft.Vote = hardState.Vote
 	raft.RaftLog.committed = hardState.Commit
 
+	if c.peers == nil {
+		c.peers = confState.Nodes
+	}
+	if c.Applied > 0 {
+		raft.RaftLog.applied = c.Applied
+	}
 	for _, p := range c.peers {
 		// 如果是重启需要考虑初始化
-		raft.Prs[p] = &Progress{
-			Next:  raft.RaftLog.LastIndex() + 1,
-			Match: raft.RaftLog.LastIndex(),
+		if p == raft.id {
+			raft.Prs[p] = &Progress{
+				Next:  raft.RaftLog.LastIndex() + 1,
+				Match: raft.RaftLog.LastIndex(),
+			}
+		} else {
+			raft.Prs[p] = &Progress{
+				Next:  raft.RaftLog.LastIndex() + 1,
+			}
 		}
 	}
 
@@ -341,6 +354,7 @@ func (r *Raft) becomeCandidate() {
 func (r *Raft) becomeLeader() {
 	// Your Code Here (2A).
 	// NOTE: Leader should propose a noop entry on its term
+	log.Infof("becomeleader")
 	r.State = StateLeader
 	r.Lead = r.id
 	r.heartbeatElapsed = 0

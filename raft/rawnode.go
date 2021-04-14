@@ -78,7 +78,7 @@ func NewRawNode(config *Config) (*RawNode, error) {
 	// Your Code Here (2A).
 	raft := newRaft(config)
 	rawNode := &RawNode{
-		Raft: raft,
+		Raft:         raft,
 		preHardState: raft.getHardState(),
 	}
 	return rawNode, nil
@@ -151,14 +151,14 @@ func (rn *RawNode) Ready() Ready {
 	// Your Code Here (2A).
 	raft := rn.Raft
 	ready := Ready{
-		Entries: raft.RaftLog.unstableEntries(),
+		Entries:          raft.RaftLog.unstableEntries(),
 		CommittedEntries: raft.RaftLog.nextEnts(),
-		Messages: raft.msgs,
+		Messages:         raft.msgs,
 	}
 	raft.msgs = make([]pb.Message, 0)
 	hardState := raft.getHardState()
-	if !isHardStateEqual(hardState, rn.preHardState){
-		rn.preHardState = hardState
+	if !isHardStateEqual(hardState, rn.preHardState) {
+		ready.HardState = hardState
 	}
 	return ready
 }
@@ -166,6 +166,15 @@ func (rn *RawNode) Ready() Ready {
 // HasReady called when RawNode user need to check if any Ready pending.
 func (rn *RawNode) HasReady() bool {
 	// Your Code Here (2A).
+	r := rn.Raft
+	if hardSt := r.getHardState(); !IsEmptyHardState(hardSt) && !isHardStateEqual(hardSt, rn.preHardState) {
+		return true
+	}
+	if len(r.RaftLog.unstableEntries()) > 0 ||
+		len(r.RaftLog.nextEnts()) > 0 ||
+		len(r.msgs) > 0 {
+		return true
+	}
 	return false
 }
 
