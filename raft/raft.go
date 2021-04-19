@@ -19,7 +19,7 @@ import (
 	"math/rand"
 	"sort"
 
-	"github.com/pingcap-incubator/tinykv/log"
+	// "github.com/pingcap-incubator/tinykv/log"
 	pb "github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
 )
 
@@ -354,7 +354,6 @@ func (r *Raft) becomeCandidate() {
 func (r *Raft) becomeLeader() {
 	// Your Code Here (2A).
 	// NOTE: Leader should propose a noop entry on its term
-	log.Infof("becomeleader")
 	r.State = StateLeader
 	r.Lead = r.id
 	r.heartbeatElapsed = 0

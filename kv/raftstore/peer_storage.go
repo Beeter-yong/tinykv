@@ -305,9 +305,40 @@ func ClearMeta(engines *engine_util.Engines, kvWB, raftWB *engine_util.WriteBatc
 }
 
 // Append the given entries to the raft log and update ps.raftState also delete log entries that will
-// never be committed
+// never be committed  	将给定的日志追加到 raft 日志中； 更新 raftState； 删除不再提交的日志条目
 func (ps *PeerStorage) Append(entries []eraftpb.Entry, raftWB *engine_util.WriteBatch) error {
 	// Your Code Here (2B).
+	// 1. 从待添加的日志中选取有效的日志
+	// 2. 写入日志数据
+	// 3. 删除raft 中无用日志
+	// 4. 更新 raftState 的状态
+	if len(entries) == 0 {
+		return nil
+	}
+	first, err := ps.FirstIndex()
+	if err != nil {
+		
+	}
+	entrysLastIndex := entries[len(entries)-1].Index
+
+	if entrysLastIndex < first {
+		return nil
+	}
+	if entries[0].Index < first {
+		entries = entries[first - entries[0].Index :]
+	}
+	regionId := ps.region.GetId()
+	for _, entry := range entries {
+		raftWB.SetMeta(meta.RaftLogKey(regionId, entry.Index), &entry)
+	}
+	preLast, _ := ps.LastIndex()
+	if preLast > entrysLastIndex {
+		for i := entrysLastIndex+1; i <= preLast; i++ {
+			raftWB.DeleteMeta(meta.RaftLogKey(regionId, i))
+		}
+	}
+	ps.raftState.LastIndex = entrysLastIndex
+	ps.raftState.LastTerm = entries[len(entries)-1].Term
 	return nil
 }
 
@@ -331,7 +362,20 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 func (ps *PeerStorage) SaveReadyState(ready *raft.Ready) (*ApplySnapResult, error) {
 	// Hint: you may call `Append()` and `ApplySnapshot()` in this function
 	// Your Code Here (2B/2C).
-	return nil, nil
+	// 1. 追加日志到 Raft 中
+	// 2. 更新 raftState 的状态
+	// 3. 写入 raft 引擎中
+	result := &ApplySnapResult{}
+	// 对快照的处理
+	raftWb := new(engine_util.WriteBatch)
+	entrys := ready.Entries
+	ps.Append(entrys, raftWb)
+	if !raft.IsEmptyHardState(ready.HardState) {
+		ps.raftState.HardState = &ready.HardState
+	}
+	raftWb.SetMeta(meta.RaftStateKey(ps.region.GetId()), ps.raftState)
+	raftWb.WriteToDB(ps.Engines.Raft)
+	return result, nil
 }
 
 func (ps *PeerStorage) ClearData() {

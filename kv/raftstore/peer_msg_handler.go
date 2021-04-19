@@ -6,10 +6,13 @@ import (
 
 	"github.com/Connor1996/badger/y"
 	"github.com/pingcap-incubator/tinykv/kv/raftstore/message"
+	"github.com/pingcap-incubator/tinykv/kv/raftstore/meta"
 	"github.com/pingcap-incubator/tinykv/kv/raftstore/runner"
 	"github.com/pingcap-incubator/tinykv/kv/raftstore/snap"
 	"github.com/pingcap-incubator/tinykv/kv/raftstore/util"
+	"github.com/pingcap-incubator/tinykv/kv/util/engine_util"
 	"github.com/pingcap-incubator/tinykv/log"
+	"github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
 	"github.com/pingcap-incubator/tinykv/proto/pkg/metapb"
 	"github.com/pingcap-incubator/tinykv/proto/pkg/raft_cmdpb"
 	rspb "github.com/pingcap-incubator/tinykv/proto/pkg/raft_serverpb"
@@ -38,11 +41,147 @@ func newPeerMsgHandler(peer *peer, ctx *GlobalContext) *peerMsgHandler {
 	}
 }
 
+func getRequestKey(req *raft_cmdpb.Request) []byte {
+	var key []byte
+	switch req.CmdType {
+	case raft_cmdpb.CmdType_Get:
+		key = req.Get.Key
+	case raft_cmdpb.CmdType_Put:
+		key = req.Put.Key
+	case raft_cmdpb.CmdType_Delete:
+		key = req.Delete.Key
+	}
+	return key
+}
+
+func (d *peerMsgHandler) process(entry *eraftpb.Entry, wb *engine_util.WriteBatch) *engine_util.WriteBatch {
+	msg := &raft_cmdpb.RaftCmdRequest{}
+	err := msg.Unmarshal(entry.Data)
+	if err != nil {
+		panic(err)
+	}
+	if !(len(msg.Requests) > 0) {
+		return wb
+	}
+
+	req := msg.Requests[0]
+	switch req.CmdType {
+	case raft_cmdpb.CmdType_Put:
+		wb.SetCF(req.Put.Cf, req.Put.Key, req.Put.Value)
+	case raft_cmdpb.CmdType_Delete:
+		wb.DeleteCF(req.Delete.Cf, req.Delete.Key)
+	}
+
+	if !(len(d.proposals) > 0) {
+		// 有响应的需要才构造响应给客户端
+		return wb
+	}
+	p := d.proposals[0]
+
+	if p.index <= entry.Index {
+		d.proposals = d.proposals[1:]
+		if p.term != entry.Term {
+			NotifyStaleReq(entry.Term, p.cb)
+			return wb
+		}
+	} else {
+		return wb
+	}
+
+	key := getRequestKey(req)
+	if key != nil {
+		err := util.CheckKeyInRegion(key, d.Region())
+		if err != nil {
+			p.cb.Done(ErrResp(err))
+			return wb
+		}
+	}
+
+	resp := &raft_cmdpb.RaftCmdResponse{Header: &raft_cmdpb.RaftResponseHeader{}}
+	switch req.CmdType {
+	case raft_cmdpb.CmdType_Get:
+		d.peerStorage.applyState.AppliedIndex = entry.Index
+		wb.SetMeta(meta.ApplyStateKey(d.regionId), d.peerStorage.applyState)
+		wb.WriteToDB(d.peerStorage.Engines.Kv)
+		value, err := engine_util.GetCF(d.peerStorage.Engines.Kv, req.Get.Cf, req.Get.Key)
+		if err != nil {
+			value = nil
+		}
+		resp.Responses = []*raft_cmdpb.Response{
+			{
+				CmdType: raft_cmdpb.CmdType_Get,
+				Get:     &raft_cmdpb.GetResponse{Value: value},
+			},
+		}
+		wb.Reset()
+	case raft_cmdpb.CmdType_Put:
+		// wb.SetCF(req.Put.Cf, req.Put.Key, req.Put.Value)
+		resp.Responses = []*raft_cmdpb.Response{
+			{
+				CmdType: raft_cmdpb.CmdType_Put,
+				Put:     &raft_cmdpb.PutResponse{},
+			},
+		}
+	case raft_cmdpb.CmdType_Delete:
+		// wb.DeleteCF(req.Delete.Cf, req.Delete.Key)
+		resp.Responses = []*raft_cmdpb.Response{
+			{
+				CmdType: raft_cmdpb.CmdType_Delete,
+				Delete:  &raft_cmdpb.DeleteResponse{},
+			},
+		}
+	case raft_cmdpb.CmdType_Snap:
+		if msg.Header.RegionEpoch.Version != d.Region().RegionEpoch.Version {
+			p.cb.Done(ErrResp(&util.ErrEpochNotMatch{}))
+			return wb
+		}
+		d.peerStorage.applyState.AppliedIndex = entry.Index
+		wb.SetMeta(meta.ApplyStateKey(d.regionId), d.peerStorage.applyState)
+		wb.WriteToDB(d.peerStorage.Engines.Kv)
+		resp.Responses = []*raft_cmdpb.Response{
+			{
+				CmdType: raft_cmdpb.CmdType_Snap,
+				Snap:    &raft_cmdpb.SnapResponse{Region: d.Region()},
+			},
+		}
+		p.cb.Txn = d.peerStorage.Engines.Kv.NewTransaction(false)
+		wb.Reset()
+	}
+	p.cb.Done(resp)
+	return wb
+}
+
 func (d *peerMsgHandler) HandleRaftReady() {
 	if d.stopped {
 		return
 	}
 	// Your Code Here (2B).
+	// 1. Raft 模块是否有待处理的消息或日志
+	// 2. 将 Ready 日志存储到 RaftStorage 中
+	// 3. 有消息将消息发送出去
+	// 4. 将日志存储到 KVStorage 中
+	if !d.RaftGroup.HasReady() {
+		return
+	}
+	rd := d.RaftGroup.Ready()
+	result, _ := d.peerStorage.SaveReadyState(&rd)
+	if result != nil {
+
+	}
+	d.Send(d.ctx.trans, rd.Messages)
+	if len(rd.CommittedEntries) > 0 {
+		kvWb := new(engine_util.WriteBatch)
+		for _, entry := range rd.CommittedEntries {
+			kvWb = d.process(&entry, kvWb)
+			if d.stopped {
+				return
+			}
+		}
+		d.peerStorage.applyState.AppliedIndex = rd.CommittedEntries[len(rd.CommittedEntries)-1].Index
+		kvWb.SetMeta(meta.ApplyStateKey(d.regionId), d.peerStorage.applyState)
+		kvWb.WriteToDB(d.peerStorage.Engines.Kv)
+	}
+	d.RaftGroup.Advance(rd)
 }
 
 func (d *peerMsgHandler) HandleMsg(msg message.Msg) {
@@ -114,6 +253,28 @@ func (d *peerMsgHandler) proposeRaftCommand(msg *raft_cmdpb.RaftCmdRequest, cb *
 		return
 	}
 	// Your Code Here (2B).
+	// 1. 检查请求的 key 是否在 region 的范围内
+	// 2. 解析数据并打包成 proposal 请求格式
+	// 3. 将日志数据追加到 raft 日志中
+	key := getRequestKey(msg.Requests[0])
+	if key != nil {
+		err := util.CheckKeyInRegion(key, d.Region())
+		if err != nil {
+			cb.Done(ErrResp(err))
+			return
+		}
+	}
+	data, err := msg.Marshal()
+	if err != nil {
+		panic(err)
+	}
+	p := &proposal{
+		index: d.nextProposalIndex(),
+		term:  d.Term(),
+		cb:    cb,
+	}
+	d.proposals = append(d.proposals, p)
+	d.RaftGroup.Propose(data)
 }
 
 func (d *peerMsgHandler) onTick() {
