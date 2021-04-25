@@ -160,6 +160,10 @@ func (rn *RawNode) Ready() Ready {
 	if !isHardStateEqual(hardState, rn.preHardState) {
 		ready.HardState = hardState
 	}
+	if !IsEmptySnap(raft.RaftLog.pendingSnapshot) {
+		ready.Snapshot = *raft.RaftLog.pendingSnapshot
+		raft.RaftLog.pendingSnapshot = nil
+	}
 	return ready
 }
 
