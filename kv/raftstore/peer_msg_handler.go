@@ -133,9 +133,26 @@ func (d *peerMsgHandler) processRequest(entry * eraftpb.Entry, msg *raft_cmdpb.R
 	return wb
 }
 
+func (d *peerMsgHandler) processAdminRequest(entry *eraftpb.Entry, msg *raft_cmdpb.RaftCmdRequest, wb *engine_util.WriteBatch) {
+	req := msg.AdminRequest
+	switch req.CmdType {
+	case raft_cmdpb.AdminCmdType_CompactLog:
+		compactLog := req.GetCompactLog()
+		applyState := d.peerStorage.applyState
+		if compactLog.CompactIndex >= applyState.TruncatedState.Index {
+			applyState.TruncatedState.Index = compactLog.CompactIndex
+			applyState.TruncatedState.Term = compactLog.CompactTerm
+			wb.SetMeta(meta.ApplyStateKey(d.regionId), applyState)
+			d.ScheduleCompactLog(applyState.TruncatedState.Index)
+		}
+	case raft_cmdpb.AdminCmdType_Split:
+		print("处理 split 请求")
+	}
+}
+
 func (d *peerMsgHandler) process(entry *eraftpb.Entry, wb *engine_util.WriteBatch) *engine_util.WriteBatch {
 	if entry.EntryType == eraftpb.EntryType_EntryConfChange {
-		
+		print("ConfChange  ")
 	}
 	msg := &raft_cmdpb.RaftCmdRequest{}
 	err := msg.Unmarshal(entry.Data)
@@ -146,7 +163,7 @@ func (d *peerMsgHandler) process(entry *eraftpb.Entry, wb *engine_util.WriteBatc
 		return d.processRequest(entry, msg, wb)
 	}
 	if msg.AdminRequest != nil {
-		print("处理 AdminRequest")
+		d.processAdminRequest(entry, msg, wb)
 	}
 	return wb
 }
@@ -259,7 +276,11 @@ func (d *peerMsgHandler) proposeAdminRequest(msg *raft_cmdpb.RaftCmdRequest, cb 
 	case raft_cmdpb.AdminCmdType_ChangePeer:
 		print(("1111111111"))
 	case raft_cmdpb.AdminCmdType_CompactLog:
-		print("22222222222222")
+		data, err := msg.Marshal()
+		if err != nil {
+			panic(err)
+		}
+		d.RaftGroup.Propose(data)
 	case raft_cmdpb.AdminCmdType_TransferLeader:
 		print("333333333333")
 	case raft_cmdpb.AdminCmdType_Split:

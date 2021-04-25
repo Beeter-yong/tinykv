@@ -174,6 +174,11 @@ func (rn *RawNode) Ready() Ready {
 	}
 	// raft 信息都已经交代给 RawNode 处理，所以 raft 应该清除
 	rn.Raft.msgs = make([]pb.Message, 0)
+
+	if !IsEmptySnap(rn.Raft.RaftLog.pendingSnapshot) {
+		ready.Snapshot = *rn.Raft.RaftLog.pendingSnapshot
+		rn.Raft.RaftLog.pendingSnapshot = nil
+	}
 	return ready
 }
 
