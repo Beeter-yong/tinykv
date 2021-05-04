@@ -354,7 +354,37 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 	// and send RegionTaskApply task to region worker through ps.regionSched, also remember call ps.clearMeta
 	// and ps.clearExtraData to delete stale data
 	// Your Code Here (2C).
-	return nil, nil
+	if ps.isInitialized() {
+		if err := ps.clearMeta(kvWB, raftWB); err != nil {
+			return nil, err
+		}
+		ps.clearExtraData(snapData.Region)
+	}
+
+	ps.raftState.LastIndex = snapshot.Metadata.Index
+	ps.raftState.LastTerm = snapshot.Metadata.Term
+	ps.applyState.AppliedIndex = snapshot.Metadata.Index
+	ps.applyState.TruncatedState.Index = snapshot.Metadata.Index
+	ps.applyState.TruncatedState.Term = snapshot.Metadata.Term
+	ps.snapState.StateType = snap.SnapState_Applying
+	kvWB.SetMeta(meta.ApplyStateKey(snapData.Region.GetId()), ps.applyState)
+
+	ch := make(chan bool, 1)
+	ps.regionSched <- &runner.RegionTaskApply{
+		RegionId: snapData.Region.GetId(),
+		Notifier: ch,
+		SnapMeta: snapshot.Metadata,
+		StartKey: snapData.Region.GetStartKey(),
+		EndKey: snapData.Region.GetEndKey(),
+	}
+	<-ch
+	result := &ApplySnapResult{
+		PrevRegion: ps.region,
+		Region: snapData.Region,
+	}
+	meta.WriteRegionState(kvWB, snapData.Region, rspb.PeerState_Normal)
+
+	return result, nil
 }
 
 // Save memory states to disk.
@@ -368,6 +398,14 @@ func (ps *PeerStorage) SaveReadyState(ready *raft.Ready) (*ApplySnapResult, erro
 	result := &ApplySnapResult{}
 	// 对快照的处理
 	raftWb := new(engine_util.WriteBatch)
+	var err error
+	if !raft.IsEmptySnap(&ready.Snapshot) {
+		kvWB := new(engine_util.WriteBatch)
+		result, err = ps.ApplySnapshot(&ready.Snapshot, kvWB, raftWb)
+		kvWB.WriteToDB(ps.Engines.Kv)
+	}
+
+
 	entrys := ready.Entries
 	ps.Append(entrys, raftWb)
 	if !raft.IsEmptyHardState(ready.HardState) {
@@ -375,7 +413,7 @@ func (ps *PeerStorage) SaveReadyState(ready *raft.Ready) (*ApplySnapResult, erro
 	}
 	raftWb.SetMeta(meta.RaftStateKey(ps.region.GetId()), ps.raftState)
 	raftWb.WriteToDB(ps.Engines.Raft)
-	return result, nil
+	return result, err
 }
 
 func (ps *PeerStorage) ClearData() {

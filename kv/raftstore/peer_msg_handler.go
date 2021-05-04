@@ -54,12 +54,36 @@ func getRequestKey(req *raft_cmdpb.Request) []byte {
 	return key
 }
 
+func (d *peerMsgHandler) processAdminRequest(entry *eraftpb.Entry, msg *raft_cmdpb.RaftCmdRequest, wb *engine_util.WriteBatch) {
+	req := msg.AdminRequest
+	switch req.CmdType {
+	case raft_cmdpb.AdminCmdType_CompactLog:
+		compactLog := req.GetCompactLog()
+		applyState := d.peerStorage.applyState
+		if compactLog.CompactIndex >= applyState.TruncatedState.Index {
+			applyState.TruncatedState.Index = compactLog.CompactIndex
+			applyState.TruncatedState.Term = compactLog.CompactTerm
+			wb.SetMeta(meta.ApplyStateKey(d.regionId), applyState)
+			d.ScheduleCompactLog(applyState.TruncatedState.Index)
+		}
+	case raft_cmdpb.AdminCmdType_Split:
+		print("需要处理 split")
+	}
+
+}
+
 func (d *peerMsgHandler) process(entry *eraftpb.Entry, wb *engine_util.WriteBatch) *engine_util.WriteBatch {
 	msg := &raft_cmdpb.RaftCmdRequest{}
 	err := msg.Unmarshal(entry.Data)
 	if err != nil {
 		panic(err)
 	}
+	
+	if msg.AdminRequest != nil {
+		d.processAdminRequest(entry, msg, wb)
+		return wb
+	}
+
 	if !(len(msg.Requests) > 0) {
 		return wb
 	}
@@ -246,10 +270,26 @@ func (d *peerMsgHandler) preProposeRaftCommand(req *raft_cmdpb.RaftCmdRequest) e
 	return err
 }
 
+func (d *peerMsgHandler) proposeAdminRequest(msg *raft_cmdpb.RaftCmdRequest, cb *message.Callback) {
+	req := msg.AdminRequest
+	switch req.CmdType {
+	case raft_cmdpb.AdminCmdType_CompactLog:
+		data, err := msg.Marshal()
+		if err != nil {
+			panic(err)
+		}
+		d.RaftGroup.Propose(data)
+	}
+}
+
 func (d *peerMsgHandler) proposeRaftCommand(msg *raft_cmdpb.RaftCmdRequest, cb *message.Callback) {
 	err := d.preProposeRaftCommand(msg)
 	if err != nil {
 		cb.Done(ErrResp(err))
+		return
+	}
+	if msg.AdminRequest != nil {
+		d.proposeAdminRequest(msg, cb)
 		return
 	}
 	// Your Code Here (2B).
