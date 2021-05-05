@@ -71,6 +71,7 @@ type RawNode struct {
 	Raft *Raft
 	// Your Data Here (2A).
 	preHardState pb.HardState
+	preSoftState *SoftState
 }
 
 // NewRawNode returns a new RawNode given configuration and a list of raft peers.
@@ -154,8 +155,11 @@ func (rn *RawNode) Ready() Ready {
 		Entries:          raft.RaftLog.unstableEntries(),
 		CommittedEntries: raft.RaftLog.nextEnts(),
 		Messages:         raft.msgs,
+		SoftState:        raft.getSoftState(),
 	}
 	raft.msgs = make([]pb.Message, 0)
+
+	rn.preSoftState = raft.getSoftState()
 	hardState := raft.getHardState()
 	if !isHardStateEqual(hardState, rn.preHardState) {
 		ready.HardState = hardState
@@ -195,7 +199,7 @@ func (rn *RawNode) Advance(rd Ready) {
 	if !IsEmptyHardState(rd.HardState) {
 		rn.preHardState = rd.HardState
 	}
-	 rn.Raft.RaftLog.maybeCompact()
+	rn.Raft.RaftLog.maybeCompact()
 }
 
 // GetProgress return the the Progress of this node and its peers, if this

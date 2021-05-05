@@ -219,6 +219,22 @@ func (r *Raft) getHardState() pb.HardState {
 	return hardState
 }
 
+func (r *Raft) getSoftState() *SoftState {
+	softState := &SoftState{
+		Lead: r.id,
+	}
+	return softState
+}
+
+func (r *Raft) sendTimeoutNow(to uint64) {
+	msg := pb.Message{
+		MsgType: pb.MessageType_MsgTimeoutNow,
+		From:    r.id,
+		To:      to,
+	}
+	r.msgs = append(r.msgs, msg)
+}
+
 func (r *Raft) sendSnapshot(to uint64) {
 	snapshot, err := r.RaftLog.storage.Snapshot()
 	if err != nil {
@@ -406,7 +422,13 @@ func (r *Raft) becomeLeader() {
 // on `eraftpb.proto` for what msgs should be handled
 func (r *Raft) Step(m pb.Message) error {
 	// Your Code Here (2A).
+	// TODO: 这是什么作用
+	if _, ok := r.Prs[r.id]; !ok && m.MsgType == pb.MessageType_MsgTimeoutNow {
+		return nil
+	}
+
 	if m.Term > r.Term {
+		r.leadTransferee = None
 		r.becomeFollower(m.Term, None)
 	}
 	switch r.State {
@@ -424,7 +446,13 @@ func (r *Raft) Step(m pb.Message) error {
 			r.handleHeartbeat(m)
 		case pb.MessageType_MsgSnapshot:
 			r.handleSnapshot(m)
-
+		case pb.MessageType_MsgTransferLeader:
+			if r.Lead != None {
+				m.To = r.Lead
+				r.msgs = append(r.msgs, m)
+			}
+		case pb.MessageType_MsgTimeoutNow:
+			r.doElection()
 		}
 	case StateCandidate:
 		switch m.MsgType {
@@ -446,6 +474,11 @@ func (r *Raft) Step(m pb.Message) error {
 			r.handleHeartbeat(m)
 		case pb.MessageType_MsgSnapshot:
 			r.handleSnapshot(m)
+		case pb.MessageType_MsgTransferLeader:
+			if r.Lead != None {
+				m.To = r.Lead
+				r.msgs = append(r.msgs, m)
+			}
 		}
 
 	case StateLeader:
@@ -465,6 +498,8 @@ func (r *Raft) Step(m pb.Message) error {
 			r.handleHeartbeatResponse(m)
 		case pb.MessageType_MsgSnapshot:
 			r.handleSnapshot(m)
+		case pb.MessageType_MsgTransferLeader:
+			r.handleTransferLeader(m)
 		}
 	}
 	return nil
@@ -612,6 +647,10 @@ func (r *Raft) handleAppendEntriesResponse(m pb.Message) {
 	r.Prs[m.From].Match = m.Index
 	r.Prs[m.From].Next = m.Index + 1
 	r.leaderCommit()
+	if m.From == r.leadTransferee && m.Index == r.RaftLog.LastIndex() {
+		r.sendTimeoutNow(m.From)
+		r.leadTransferee = None
+	}
 
 }
 
@@ -690,12 +729,44 @@ func (r *Raft) handleSnapshot(m pb.Message) {
 	r.sendAppendResponse(m.From, false)
 }
 
+func (r *Raft) handleTransferLeader(m pb.Message) {
+	if m.From == r.id {
+		return
+	}
+	if r.leadTransferee != None && r.leadTransferee == m.From {
+		return
+	}
+	if _, ok := r.Prs[m.From]; !ok {
+		return
+	}
+	r.leadTransferee = m.From
+	if r.Prs[m.From].Match == r.RaftLog.LastIndex() {
+		r.sendTimeoutNow(m.From)
+	} else {
+		r.sendAppend(m.From)
+	}
+
+}
+
 // addNode add a new node to raft group
 func (r *Raft) addNode(id uint64) {
 	// Your Code Here (3A).
+	_, ok := r.Prs[id]
+	if !ok {
+		r.Prs[id] = &Progress{Next: 1}
+	}
+	r.PendingConfIndex = None
 }
 
 // removeNode remove a node from raft group
 func (r *Raft) removeNode(id uint64) {
 	// Your Code Here (3A).
+	_, ok := r.Prs[id]
+	if ok {
+		delete(r.Prs, id)
+		if r.State == StateLeader {
+			r.leaderCommit()
+		}
+	}
+	r.PendingConfIndex = None
 }
