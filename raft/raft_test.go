@@ -1268,7 +1268,7 @@ func TestLeaderTransferToUpToDateNode3A(t *testing.T) {
 
 	nt.send(pb.Message{From: 1, To: 2, MsgType: pb.MessageType_MsgTransferLeader})
 
-	checkLeaderTransferState(t, lead, StateLeader, 1)
+ 	checkLeaderTransferState(t, lead, StateLeader, 1)
 }
 
 // TestLeaderTransferToUpToDateNodeFromFollower verifies transferring should succeed

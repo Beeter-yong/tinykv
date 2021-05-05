@@ -71,6 +71,7 @@ type RawNode struct {
 	Raft *Raft
 	// Your Data Here (2A).
 	PreHardState pb.HardState
+	PrevSoftState *SoftState
 }
 
 // NewRawNode returns a new RawNode given configuration and a list of raft peers.
@@ -154,10 +155,10 @@ func (rn *RawNode) Step(m pb.Message) error {
 // Ready returns the current point-in-time state of this RawNode.	返回当前时间点 Node 状态
 func (rn *RawNode) Ready() Ready {
 	// Your Code Here (2A).
-	// softState := &SoftState{
-	// 	Lead: rn.Raft.Lead,
-	// 	RaftState: rn.Raft.State,
-	// }
+	softState := &SoftState{
+		Lead: rn.Raft.Lead,
+		RaftState: rn.Raft.State,
+	}
 	hardState := pb.HardState{
 		Term: rn.Raft.Term,
 		Vote: rn.Raft.Vote,
@@ -168,10 +169,15 @@ func (rn *RawNode) Ready() Ready {
 		Entries: rn.Raft.RaftLog.unstableEntries(),
 		CommittedEntries: rn.Raft.RaftLog.nextEnts(),
 		Messages: rn.Raft.msgs,
+		SoftState: softState,
 	}
+
 	if !isHardStateEqual(hardState, rn.PreHardState) {
 		ready.HardState = hardState
 	}
+
+	rn.PrevSoftState = softState
+
 	// raft 信息都已经交代给 RawNode 处理，所以 raft 应该清除
 	rn.Raft.msgs = make([]pb.Message, 0)
 
