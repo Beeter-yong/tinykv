@@ -320,7 +320,7 @@ func (ps *PeerStorage) Append(entries []eraftpb.Entry, raftWB *engine_util.Write
 	}
 
 	if first > entries[0].Index {
-		entries = entries[first-entries[0].Index : ]
+		entries = entries[first-entries[0].Index:]
 	}
 
 	regionId := ps.region.GetId()
@@ -329,12 +329,12 @@ func (ps *PeerStorage) Append(entries []eraftpb.Entry, raftWB *engine_util.Write
 	}
 	prevLast, _ := ps.LastIndex()
 	if prevLast > last {
-		for i := last+1; i <= prevLast; i++ {
+		for i := last + 1; i <= prevLast; i++ {
 			raftWB.DeleteMeta(meta.RaftLogKey(regionId, i))
 		}
-	} 
+	}
 	ps.raftState.LastIndex = last
-	ps.raftState.LastTerm = entries[len(entries) - 1].Term
+	ps.raftState.LastTerm = entries[len(entries)-1].Term
 	return nil
 }
 
@@ -352,12 +352,11 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 	// and ps.clearExtraData to delete stale data
 	// Your Code Here (2C).
 	if ps.isInitialized() {
-		if  err := ps.clearMeta(kvWB, raftWB); err != nil {
+		if err := ps.clearMeta(kvWB, raftWB); err != nil {
 			return nil, err
 		}
 		ps.clearExtraData(snapData.Region)
 	}
-
 
 	ps.raftState.LastIndex = snapshot.Metadata.Index
 	ps.raftState.LastTerm = snapshot.Metadata.Term
@@ -373,11 +372,14 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 		Notifier: ch,
 		SnapMeta: snapshot.Metadata,
 		StartKey: snapData.Region.GetStartKey(),
-		EndKey: snapData.Region.GetEndKey(),
+		EndKey:   snapData.Region.GetEndKey(),
 	}
-	<- ch
+	<-ch
 
 	result := &ApplySnapResult{PrevRegion: ps.region, Region: snapData.Region}
+	// log.Info(ps.Region().GetEndKey())
+	// log.Info("***************")
+	// log.Info(snapData.Region.GetEndKey())
 	meta.WriteRegionState(kvWB, snapData.Region, rspb.PeerState_Normal)
 
 	return result, nil
