@@ -255,6 +255,9 @@ func (r *Raft) sendSnapshot(to uint64) {
 // current commit index to the given peer. Returns true if a message was sent.
 func (r *Raft) sendAppend(to uint64) bool {
 	// Your Code Here (2A).
+	if r.Prs[to].Next == 0 {
+		r.Prs[to].Next = 1
+	}
 	preIndex := r.Prs[to].Next - 1
 	logTerm, err := r.RaftLog.Term(preIndex)
 
@@ -613,6 +616,9 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 		return
 	}
 	for _, entry := range m.Entries {
+		if entry.Index < r.RaftLog.FirstIndex {
+			continue
+		}
 		if entry.Index <= r.RaftLog.LastIndex() {
 			idx := entry.Index - r.RaftLog.FirstIndex
 			if int(idx) >= len(r.RaftLog.entries) {
@@ -637,6 +643,9 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 }
 
 func (r *Raft) handleAppendEntriesResponse(m pb.Message) {
+	if m.Term != None && m.Term < r.Term {
+		return
+	}
 	if m.Reject {
 		// Follower 拒绝请求
 		r.Prs[m.From].Next = r.Prs[m.From].Next - uint64(1)
@@ -751,8 +760,7 @@ func (r *Raft) handleTransferLeader(m pb.Message) {
 // addNode add a new node to raft group
 func (r *Raft) addNode(id uint64) {
 	// Your Code Here (3A).
-	_, ok := r.Prs[id]
-	if !ok {
+	if _, ok := r.Prs[id]; !ok {
 		r.Prs[id] = &Progress{Next: 1}
 	}
 	r.PendingConfIndex = None

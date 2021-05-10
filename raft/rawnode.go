@@ -183,6 +183,9 @@ func (rn *RawNode) HasReady() bool {
 		len(r.msgs) > 0 {
 		return true
 	}
+	if !IsEmptySnap(r.RaftLog.pendingSnapshot) {
+		return true
+	}
 	return false
 }
 
